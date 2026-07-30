@@ -56,6 +56,37 @@
     background: #000;
   }
   #reader video { object-fit: cover; }
+  #camTools {
+    display: none;
+    padding: 10px 14px 0;
+    align-items: center;
+    gap: 10px;
+  }
+  #camTools.show { display: flex; }
+  #camTools label {
+    font-size: 0.75rem;
+    color: var(--muted);
+    flex: none;
+  }
+  #zoomRange {
+    flex: 1;
+    accent-color: var(--accent);
+  }
+  #torchBtn {
+    flex: none;
+    background: #2a2e38;
+    color: var(--text);
+    padding: 6px 10px;
+    font-size: 0.85rem;
+    border-radius: 8px;
+  }
+  #torchBtn.on { background: var(--accent); color: white; }
+  #tip {
+    padding: 8px 16px 0;
+    font-size: 0.75rem;
+    color: var(--muted);
+    text-align: center;
+  }
   #controls {
     padding: 14px;
     display: flex;
@@ -229,6 +260,12 @@
 
   <div id="scanner-card">
     <div id="reader"></div>
+    <div id="camTools">
+      <label for="zoomRange">Zoom</label>
+      <input type="range" id="zoomRange" min="1" max="5" step="0.1" value="1" />
+      <button id="torchBtn">🔦</button>
+    </div>
+    <div id="tip">Small barcode? Move closer, use Zoom, and hold steady until it focuses.</div>
     <div id="controls">
       <button id="startBtn">Start Scanning</button>
       <button id="stopBtn">Stop</button>
@@ -274,8 +311,12 @@
   const exportBtn = document.getElementById("exportBtn");
   const clearBtn = document.getElementById("clearBtn");
   const manualBtn = document.getElementById("manualBtn");
+  const camTools = document.getElementById("camTools");
+  const zoomRange = document.getElementById("zoomRange");
+  const torchBtn = document.getElementById("torchBtn");
 
   let editingId = null;
+  let torchOn = false;
 
   function loadHistory() {
     try {
@@ -469,13 +510,19 @@
     const config = {
       fps: 15,
       qrbox: (viewfinderWidth, viewfinderHeight) => {
-        const size = Math.floor(Math.min(viewfinderWidth, viewfinderHeight) * 0.8);
-        return { width: size, height: Math.floor(size * 0.5) };
+        const size = Math.floor(Math.min(viewfinderWidth, viewfinderHeight) * 0.7);
+        return { width: size, height: Math.floor(size * 0.42) };
       },
       aspectRatio: 1.2,
       disableFlip: false,
       experimentalFeatures: {
         useBarCodeDetectorIfSupported: true
+      },
+      videoConstraints: {
+        facingMode: "environment",
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+        advanced: [{ focusMode: "continuous" }]
       }
     };
 
@@ -497,10 +544,61 @@
       startBtn.style.display = "none";
       stopBtn.style.display = "block";
       setStatus("Scanning… point camera at a barcode");
+      setupCameraTools();
     } catch (err) {
       setStatus("Camera error: " + (err && err.message ? err.message : err), "err");
     }
   }
+
+  function setupCameraTools() {
+    camTools.classList.remove("show");
+    torchBtn.style.display = "none";
+    zoomRange.style.display = "none";
+    if (!html5Qr || typeof html5Qr.getRunningTrackCapabilities !== "function") return;
+
+    let caps;
+    try {
+      caps = html5Qr.getRunningTrackCapabilities();
+    } catch (e) {
+      return;
+    }
+    if (!caps) return;
+
+    let anyToolShown = false;
+
+    if (caps.zoom && caps.zoom.min !== undefined && caps.zoom.max !== undefined) {
+      zoomRange.min = caps.zoom.min;
+      zoomRange.max = caps.zoom.max;
+      zoomRange.step = caps.zoom.step || 0.1;
+      zoomRange.value = caps.zoom.min;
+      zoomRange.style.display = "block";
+      anyToolShown = true;
+    }
+
+    if (caps.torch) {
+      torchOn = false;
+      torchBtn.classList.remove("on");
+      torchBtn.style.display = "block";
+      anyToolShown = true;
+    }
+
+    if (anyToolShown) camTools.classList.add("show");
+  }
+
+  zoomRange.addEventListener("input", () => {
+    if (!html5Qr || typeof html5Qr.applyVideoConstraints !== "function") return;
+    const val = parseFloat(zoomRange.value);
+    html5Qr.applyVideoConstraints({ advanced: [{ zoom: val }] }).catch(() => {});
+  });
+
+  torchBtn.addEventListener("click", () => {
+    if (!html5Qr || typeof html5Qr.applyVideoConstraints !== "function") return;
+    torchOn = !torchOn;
+    html5Qr.applyVideoConstraints({ advanced: [{ torch: torchOn }] }).catch(() => {
+      torchOn = !torchOn;
+    });
+    torchBtn.classList.toggle("on", torchOn);
+  });
 
   async function stopScanning() {
     if (!scanning || !html5Qr) return;
@@ -513,6 +611,8 @@
     scanning = false;
     startBtn.style.display = "block";
     stopBtn.style.display = "none";
+    camTools.classList.remove("show");
+    torchOn = false;
     setStatus("Stopped");
   }
 
