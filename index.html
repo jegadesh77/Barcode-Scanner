@@ -239,6 +239,18 @@
     gap: 8px;
     flex: 1;
   }
+  .edit-row .field-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .edit-row .field-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--accent);
+  }
   .edit-row input {
     background: #11141b;
     border: 1px solid #2a2e38;
@@ -369,17 +381,23 @@
         const row = document.createElement("div");
         row.className = "edit-row";
 
-        const nameInput = document.createElement("input");
-        nameInput.placeholder = "Product name (e.g. 1L Handcrafted Design)";
-        nameInput.value = entry.name || "";
+        function field(labelText, placeholder, value) {
+          const wrap = document.createElement("div");
+          wrap.className = "field-wrap";
+          const label = document.createElement("label");
+          label.className = "field-label";
+          label.textContent = labelText;
+          const input = document.createElement("input");
+          input.placeholder = placeholder;
+          input.value = value || "";
+          wrap.appendChild(label);
+          wrap.appendChild(input);
+          return { wrap, input };
+        }
 
-        const skuInput = document.createElement("input");
-        skuInput.placeholder = "Product SKU (e.g. Prithvi)";
-        skuInput.value = entry.sku || "";
-
-        const codeInput = document.createElement("input");
-        codeInput.placeholder = "Barcode value";
-        codeInput.value = entry.code || "";
+        const nameField = field("Product Name", "e.g. 1L Handcrafted Design", entry.name);
+        const skuField = field("Product SKU", "e.g. Prithvi", entry.sku);
+        const codeField = field("Barcode value", "Barcode value", entry.code);
 
         const btnRow = document.createElement("div");
         btnRow.className = "edit-buttons";
@@ -389,9 +407,9 @@
         saveBtn.textContent = "Save";
         saveBtn.addEventListener("click", () => {
           updateEntry(entry.id, {
-            name: nameInput.value.trim(),
-            sku: skuInput.value.trim(),
-            code: codeInput.value.trim() || entry.code
+            name: nameField.input.value.trim(),
+            sku: skuField.input.value.trim(),
+            code: codeField.input.value.trim() || entry.code
           });
           editingId = null;
           renderHistory();
@@ -407,9 +425,9 @@
 
         btnRow.appendChild(saveBtn);
         btnRow.appendChild(cancelBtn);
-        row.appendChild(nameInput);
-        row.appendChild(skuInput);
-        row.appendChild(codeInput);
+        row.appendChild(nameField.wrap);
+        row.appendChild(skuField.wrap);
+        row.appendChild(codeField.wrap);
         row.appendChild(btnRow);
         li.appendChild(row);
       } else {
@@ -420,10 +438,10 @@
         const nameDiv = document.createElement("div");
         if (entry.name) {
           nameDiv.className = "pname";
-          nameDiv.textContent = entry.name;
+          nameDiv.textContent = "Name: " + entry.name;
         } else {
           nameDiv.className = "pname empty";
-          nameDiv.textContent = "No product name — tap Edit to add one";
+          nameDiv.textContent = "No product name — tap ✎ Edit to add one";
         }
 
         const skuDiv = document.createElement("div");
@@ -432,17 +450,17 @@
           skuDiv.textContent = "SKU: " + entry.sku;
         } else {
           skuDiv.className = "sku empty";
-          skuDiv.textContent = "No SKU set — tap Edit to add one";
+          skuDiv.textContent = "No SKU set — tap ✎ Edit to add one";
         }
 
         const codeDiv = document.createElement("div");
         codeDiv.className = "code";
-        codeDiv.textContent = entry.code;
+        codeDiv.textContent = "Barcode: " + entry.code;
 
         const metaDiv = document.createElement("div");
         metaDiv.className = "meta";
         const d = new Date(entry.time);
-        metaDiv.textContent = entry.format + " · " + d.toLocaleString();
+        metaDiv.textContent = "Format: " + entry.format + " · " + d.toLocaleString();
 
         info.appendChild(nameDiv);
         info.appendChild(skuDiv);
