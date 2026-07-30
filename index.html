@@ -174,10 +174,15 @@
     gap: 10px;
   }
   ul#history-list li .info { min-width: 0; flex: 1; }
-  ul#history-list li .code {
-    font-weight: 600;
-    font-size: 0.95rem;
-    word-break: break-all;
+  ul#history-list li .pname {
+    font-weight: 700;
+    font-size: 1.02rem;
+    word-break: break-word;
+  }
+  ul#history-list li .pname.empty {
+    color: var(--muted);
+    font-weight: 400;
+    font-style: italic;
   }
   ul#history-list li .sku {
     color: var(--accent);
@@ -190,6 +195,13 @@
     color: var(--muted);
     font-weight: 400;
     font-style: italic;
+  }
+  ul#history-list li .code {
+    font-weight: 500;
+    font-size: 0.78rem;
+    color: var(--muted);
+    word-break: break-all;
+    margin-top: 3px;
   }
   ul#history-list li .meta {
     color: var(--muted);
@@ -354,13 +366,17 @@
         const row = document.createElement("div");
         row.className = "edit-row";
 
+        const nameInput = document.createElement("input");
+        nameInput.placeholder = "Product name (e.g. 1L Handcrafted Design)";
+        nameInput.value = entry.name || "";
+
+        const skuInput = document.createElement("input");
+        skuInput.placeholder = "Product SKU (e.g. Prithvi)";
+        skuInput.value = entry.sku || "";
+
         const codeInput = document.createElement("input");
         codeInput.placeholder = "Barcode value";
         codeInput.value = entry.code || "";
-
-        const skuInput = document.createElement("input");
-        skuInput.placeholder = "Product SKU / name (e.g. Sanna20idly)";
-        skuInput.value = entry.sku || "";
 
         const btnRow = document.createElement("div");
         btnRow.className = "edit-buttons";
@@ -369,7 +385,11 @@
         saveBtn.className = "save-btn";
         saveBtn.textContent = "Save";
         saveBtn.addEventListener("click", () => {
-          updateEntry(entry.id, { code: codeInput.value.trim() || entry.code, sku: skuInput.value.trim() });
+          updateEntry(entry.id, {
+            name: nameInput.value.trim(),
+            sku: skuInput.value.trim(),
+            code: codeInput.value.trim() || entry.code
+          });
           editingId = null;
           renderHistory();
         });
@@ -384,17 +404,24 @@
 
         btnRow.appendChild(saveBtn);
         btnRow.appendChild(cancelBtn);
-        row.appendChild(codeInput);
+        row.appendChild(nameInput);
         row.appendChild(skuInput);
+        row.appendChild(codeInput);
         row.appendChild(btnRow);
         li.appendChild(row);
       } else {
         // ---- display mode ----
         const info = document.createElement("div");
         info.className = "info";
-        const codeDiv = document.createElement("div");
-        codeDiv.className = "code";
-        codeDiv.textContent = entry.code;
+
+        const nameDiv = document.createElement("div");
+        if (entry.name) {
+          nameDiv.className = "pname";
+          nameDiv.textContent = entry.name;
+        } else {
+          nameDiv.className = "pname empty";
+          nameDiv.textContent = "No product name — tap Edit to add one";
+        }
 
         const skuDiv = document.createElement("div");
         if (entry.sku) {
@@ -405,13 +432,18 @@
           skuDiv.textContent = "No SKU set — tap Edit to add one";
         }
 
+        const codeDiv = document.createElement("div");
+        codeDiv.className = "code";
+        codeDiv.textContent = entry.code;
+
         const metaDiv = document.createElement("div");
         metaDiv.className = "meta";
         const d = new Date(entry.time);
         metaDiv.textContent = entry.format + " · " + d.toLocaleString();
 
-        info.appendChild(codeDiv);
+        info.appendChild(nameDiv);
         info.appendChild(skuDiv);
+        info.appendChild(codeDiv);
         info.appendChild(metaDiv);
 
         const actions = document.createElement("div");
@@ -454,9 +486,9 @@
 
     const id = now + "-" + Math.random().toString(36).slice(2);
     const history = loadHistory();
-    history.unshift({ id, code, format, sku: "", time: now });
+    history.unshift({ id, code, format, name: "", sku: "", time: now });
     saveHistory(history);
-    editingId = id; // open edit mode immediately so the SKU can be added/corrected
+    editingId = id; // open edit mode immediately so name + SKU can be added/corrected
     renderHistory();
 
     lastCodeEl.textContent = code;
@@ -464,19 +496,21 @@
     lastScanEl.classList.add("show");
 
     if (navigator.vibrate) navigator.vibrate(80);
-    setStatus("Scanned — check the code below and add/fix the SKU if needed", "ok");
+    setStatus("Scanned — add the product name and SKU below", "ok");
   }
 
   function addManualEntry() {
     const code = prompt("Barcode value (leave blank if unknown):", "") || "";
-    const sku = prompt("Product SKU / name:", "") || "";
-    if (!code && !sku) return;
+    const name = prompt("Product name:", "") || "";
+    const sku = prompt("Product SKU:", "") || "";
+    if (!code && !name && !sku) return;
     const now = Date.now();
     const history = loadHistory();
     history.unshift({
       id: now + "-" + Math.random().toString(36).slice(2),
       code: code.trim() || "(no barcode)",
       format: "Manual",
+      name: name.trim(),
       sku: sku.trim(),
       time: now
     });
@@ -622,11 +656,12 @@
       setStatus("Nothing to export", "err");
       return;
     }
-    let csv = "code,sku,format,timestamp\n";
+    let csv = "product_name,sku,code,format,timestamp\n";
     history.forEach((e) => {
       const iso = new Date(e.time).toISOString();
+      const name = e.name || "";
       const sku = e.sku || "";
-      csv += `"${e.code.replace(/"/g, '""')}","${sku.replace(/"/g, '""')}","${e.format}","${iso}"\n`;
+      csv += `"${name.replace(/"/g, '""')}","${sku.replace(/"/g, '""')}","${e.code.replace(/"/g, '""')}","${e.format}","${iso}"\n`;
     });
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
