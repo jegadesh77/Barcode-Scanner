@@ -142,30 +142,81 @@
     align-items: center;
     gap: 10px;
   }
-  ul#history-list li .info { min-width: 0; }
+  ul#history-list li .info { min-width: 0; flex: 1; }
   ul#history-list li .code {
     font-weight: 600;
     font-size: 0.95rem;
     word-break: break-all;
+  }
+  ul#history-list li .sku {
+    color: var(--accent);
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-top: 3px;
+    word-break: break-all;
+  }
+  ul#history-list li .sku.empty {
+    color: var(--muted);
+    font-weight: 400;
+    font-style: italic;
   }
   ul#history-list li .meta {
     color: var(--muted);
     font-size: 0.72rem;
     margin-top: 2px;
   }
-  ul#history-list li .del {
+  ul#history-list li .item-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: none;
+  }
+  ul#history-list li .item-actions button {
     background: transparent;
     color: var(--muted);
     flex: none;
     padding: 4px 8px;
-    font-size: 1rem;
+    font-size: 0.9rem;
     line-height: 1;
   }
+  ul#history-list li .item-actions button.del { color: var(--danger); }
+  ul#history-list li .item-actions button.edit { color: var(--accent); }
   #empty {
     color: var(--muted);
     font-size: 0.85rem;
     text-align: center;
     padding: 24px 0;
+  }
+  .edit-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: 1;
+  }
+  .edit-row input {
+    background: #11141b;
+    border: 1px solid #2a2e38;
+    color: var(--text);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 0.88rem;
+    width: 100%;
+  }
+  .edit-row .edit-buttons {
+    display: flex;
+    gap: 8px;
+  }
+  .edit-row .edit-buttons button {
+    flex: 1;
+    padding: 7px 10px;
+    font-size: 0.78rem;
+  }
+  .edit-row .save-btn { background: var(--accent); color: white; }
+  .edit-row .cancel-btn { background: #2a2e38; color: var(--text); }
+  #manualBtn {
+    flex: none;
+    background: #2a2e38;
+    color: var(--text);
   }
 </style>
 </head>
@@ -194,6 +245,7 @@
     <div id="history-head">
       <h2>Scan History</h2>
       <div id="history-actions">
+        <button id="manualBtn">+ Add</button>
         <button id="exportBtn">Export CSV</button>
         <button id="clearBtn">Clear</button>
       </div>
@@ -221,6 +273,9 @@
   const emptyEl = document.getElementById("empty");
   const exportBtn = document.getElementById("exportBtn");
   const clearBtn = document.getElementById("clearBtn");
+  const manualBtn = document.getElementById("manualBtn");
+
+  let editingId = null;
 
   function loadHistory() {
     try {
@@ -234,6 +289,14 @@
     localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
   }
 
+  function updateEntry(id, changes) {
+    const history = loadHistory();
+    const idx = history.findIndex((e) => e.id === id);
+    if (idx === -1) return;
+    history[idx] = Object.assign({}, history[idx], changes);
+    saveHistory(history);
+  }
+
   function renderHistory() {
     const history = loadHistory();
     historyList.innerHTML = "";
@@ -244,29 +307,99 @@
     emptyEl.style.display = "none";
     history.forEach((entry) => {
       const li = document.createElement("li");
-      const info = document.createElement("div");
-      info.className = "info";
-      const codeDiv = document.createElement("div");
-      codeDiv.className = "code";
-      codeDiv.textContent = entry.code;
-      const metaDiv = document.createElement("div");
-      metaDiv.className = "meta";
-      const d = new Date(entry.time);
-      metaDiv.textContent = entry.format + " · " + d.toLocaleString();
-      info.appendChild(codeDiv);
-      info.appendChild(metaDiv);
 
-      const delBtn = document.createElement("button");
-      delBtn.className = "del";
-      delBtn.textContent = "✕";
-      delBtn.addEventListener("click", () => {
-        const h = loadHistory().filter((e) => e.id !== entry.id);
-        saveHistory(h);
-        renderHistory();
-      });
+      if (editingId === entry.id) {
+        // ---- edit mode ----
+        const row = document.createElement("div");
+        row.className = "edit-row";
 
-      li.appendChild(info);
-      li.appendChild(delBtn);
+        const codeInput = document.createElement("input");
+        codeInput.placeholder = "Barcode value";
+        codeInput.value = entry.code || "";
+
+        const skuInput = document.createElement("input");
+        skuInput.placeholder = "Product SKU / name (e.g. Sanna20idly)";
+        skuInput.value = entry.sku || "";
+
+        const btnRow = document.createElement("div");
+        btnRow.className = "edit-buttons";
+
+        const saveBtn = document.createElement("button");
+        saveBtn.className = "save-btn";
+        saveBtn.textContent = "Save";
+        saveBtn.addEventListener("click", () => {
+          updateEntry(entry.id, { code: codeInput.value.trim() || entry.code, sku: skuInput.value.trim() });
+          editingId = null;
+          renderHistory();
+        });
+
+        const cancelBtn = document.createElement("button");
+        cancelBtn.className = "cancel-btn";
+        cancelBtn.textContent = "Cancel";
+        cancelBtn.addEventListener("click", () => {
+          editingId = null;
+          renderHistory();
+        });
+
+        btnRow.appendChild(saveBtn);
+        btnRow.appendChild(cancelBtn);
+        row.appendChild(codeInput);
+        row.appendChild(skuInput);
+        row.appendChild(btnRow);
+        li.appendChild(row);
+      } else {
+        // ---- display mode ----
+        const info = document.createElement("div");
+        info.className = "info";
+        const codeDiv = document.createElement("div");
+        codeDiv.className = "code";
+        codeDiv.textContent = entry.code;
+
+        const skuDiv = document.createElement("div");
+        if (entry.sku) {
+          skuDiv.className = "sku";
+          skuDiv.textContent = "SKU: " + entry.sku;
+        } else {
+          skuDiv.className = "sku empty";
+          skuDiv.textContent = "No SKU set — tap Edit to add one";
+        }
+
+        const metaDiv = document.createElement("div");
+        metaDiv.className = "meta";
+        const d = new Date(entry.time);
+        metaDiv.textContent = entry.format + " · " + d.toLocaleString();
+
+        info.appendChild(codeDiv);
+        info.appendChild(skuDiv);
+        info.appendChild(metaDiv);
+
+        const actions = document.createElement("div");
+        actions.className = "item-actions";
+
+        const editBtn = document.createElement("button");
+        editBtn.className = "edit";
+        editBtn.textContent = "✎";
+        editBtn.addEventListener("click", () => {
+          editingId = entry.id;
+          renderHistory();
+        });
+
+        const delBtn = document.createElement("button");
+        delBtn.className = "del";
+        delBtn.textContent = "✕";
+        delBtn.addEventListener("click", () => {
+          const h = loadHistory().filter((e) => e.id !== entry.id);
+          saveHistory(h);
+          renderHistory();
+        });
+
+        actions.appendChild(editBtn);
+        actions.appendChild(delBtn);
+
+        li.appendChild(info);
+        li.appendChild(actions);
+      }
+
       historyList.appendChild(li);
     });
   }
@@ -278,9 +411,11 @@
     lastCode = code;
     lastScanTime = now;
 
+    const id = now + "-" + Math.random().toString(36).slice(2);
     const history = loadHistory();
-    history.unshift({ id: now + "-" + Math.random().toString(36).slice(2), code, format, time: now });
+    history.unshift({ id, code, format, sku: "", time: now });
     saveHistory(history);
+    editingId = id; // open edit mode immediately so the SKU can be added/corrected
     renderHistory();
 
     lastCodeEl.textContent = code;
@@ -288,7 +423,24 @@
     lastScanEl.classList.add("show");
 
     if (navigator.vibrate) navigator.vibrate(80);
-    setStatus("Scanned successfully", "ok");
+    setStatus("Scanned — check the code below and add/fix the SKU if needed", "ok");
+  }
+
+  function addManualEntry() {
+    const code = prompt("Barcode value (leave blank if unknown):", "") || "";
+    const sku = prompt("Product SKU / name:", "") || "";
+    if (!code && !sku) return;
+    const now = Date.now();
+    const history = loadHistory();
+    history.unshift({
+      id: now + "-" + Math.random().toString(36).slice(2),
+      code: code.trim() || "(no barcode)",
+      format: "Manual",
+      sku: sku.trim(),
+      time: now
+    });
+    saveHistory(history);
+    renderHistory();
   }
 
   function setStatus(msg, kind) {
@@ -315,12 +467,16 @@
     });
 
     const config = {
-      fps: 10,
+      fps: 15,
       qrbox: (viewfinderWidth, viewfinderHeight) => {
-        const size = Math.floor(Math.min(viewfinderWidth, viewfinderHeight) * 0.7);
-        return { width: size, height: Math.floor(size * 0.6) };
+        const size = Math.floor(Math.min(viewfinderWidth, viewfinderHeight) * 0.8);
+        return { width: size, height: Math.floor(size * 0.5) };
       },
-      aspectRatio: 1.2
+      aspectRatio: 1.2,
+      disableFlip: false,
+      experimentalFeatures: {
+        useBarCodeDetectorIfSupported: true
+      }
     };
 
     try {
@@ -366,10 +522,11 @@
       setStatus("Nothing to export", "err");
       return;
     }
-    let csv = "code,format,timestamp\n";
+    let csv = "code,sku,format,timestamp\n";
     history.forEach((e) => {
       const iso = new Date(e.time).toISOString();
-      csv += `"${e.code.replace(/"/g, '""')}","${e.format}","${iso}"\n`;
+      const sku = e.sku || "";
+      csv += `"${e.code.replace(/"/g, '""')}","${sku.replace(/"/g, '""')}","${e.format}","${iso}"\n`;
     });
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
@@ -385,6 +542,7 @@
   startBtn.addEventListener("click", startScanning);
   stopBtn.addEventListener("click", stopScanning);
   exportBtn.addEventListener("click", exportCsv);
+  manualBtn.addEventListener("click", addManualEntry);
   clearBtn.addEventListener("click", () => {
     if (confirm("Clear all scan history?")) {
       saveHistory([]);
