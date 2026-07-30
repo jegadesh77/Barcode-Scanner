@@ -211,6 +211,36 @@
     font-size: 0.72rem;
     margin-top: 2px;
   }
+  ul#history-list li .qty-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 6px;
+  }
+  ul#history-list li .qty-row .qty-label {
+    font-size: 0.72rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    font-weight: 700;
+  }
+  ul#history-list li .qty-row button {
+    flex: none;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border-radius: 8px;
+    background: #2a2e38;
+    color: var(--text);
+    font-size: 1rem;
+    line-height: 1;
+  }
+  ul#history-list li .qty-row .qty-value {
+    min-width: 26px;
+    text-align: center;
+    font-weight: 700;
+    font-size: 0.95rem;
+  }
   ul#history-list li .item-actions {
     display: flex;
     flex-direction: column;
@@ -530,6 +560,10 @@
         const nameField = field("Product Name", "e.g. 1L Handcrafted Design", entry.name);
         const skuField = field("Product SKU", "e.g. Prithvi", entry.sku);
         const codeField = field("Barcode value", "Barcode value", entry.code);
+        const qtyField = field("Quantity", "1", entry.qty != null ? String(entry.qty) : "1");
+        qtyField.input.type = "number";
+        qtyField.input.min = "0";
+        qtyField.input.inputMode = "numeric";
 
         const btnRow = document.createElement("div");
         btnRow.className = "edit-buttons";
@@ -541,7 +575,9 @@
           const finalCode = codeField.input.value.trim() || entry.code;
           const finalName = nameField.input.value.trim();
           const finalSku = skuField.input.value.trim();
-          updateEntry(entry.id, { name: finalName, sku: finalSku, code: finalCode });
+          const parsedQty = parseInt(qtyField.input.value, 10);
+          const finalQty = isNaN(parsedQty) || parsedQty < 0 ? (entry.qty != null ? entry.qty : 1) : parsedQty;
+          updateEntry(entry.id, { name: finalName, sku: finalSku, code: finalCode, qty: finalQty });
           // remember this product so future scans of the same barcode auto-fill
           upsertCatalogEntry(finalCode, finalName, finalSku);
           editingId = null;
@@ -560,6 +596,7 @@
         btnRow.appendChild(cancelBtn);
         row.appendChild(nameField.wrap);
         row.appendChild(skuField.wrap);
+        row.appendChild(qtyField.wrap);
         row.appendChild(codeField.wrap);
         row.appendChild(btnRow);
         li.appendChild(row);
@@ -590,6 +627,34 @@
         codeDiv.className = "code";
         codeDiv.textContent = "Barcode: " + entry.code;
 
+        const qtyRow = document.createElement("div");
+        qtyRow.className = "qty-row";
+        const qtyLabel = document.createElement("span");
+        qtyLabel.className = "qty-label";
+        qtyLabel.textContent = "Qty";
+        const qtyMinus = document.createElement("button");
+        qtyMinus.textContent = "−";
+        const qtyValue = document.createElement("span");
+        qtyValue.className = "qty-value";
+        const currentQty = entry.qty != null ? entry.qty : 1;
+        qtyValue.textContent = String(currentQty);
+        const qtyPlus = document.createElement("button");
+        qtyPlus.textContent = "+";
+        qtyMinus.addEventListener("click", () => {
+          const q = Math.max(0, (entry.qty != null ? entry.qty : 1) - 1);
+          updateEntry(entry.id, { qty: q });
+          renderHistory();
+        });
+        qtyPlus.addEventListener("click", () => {
+          const q = (entry.qty != null ? entry.qty : 1) + 1;
+          updateEntry(entry.id, { qty: q });
+          renderHistory();
+        });
+        qtyRow.appendChild(qtyLabel);
+        qtyRow.appendChild(qtyMinus);
+        qtyRow.appendChild(qtyValue);
+        qtyRow.appendChild(qtyPlus);
+
         const metaDiv = document.createElement("div");
         metaDiv.className = "meta";
         const d = new Date(entry.time);
@@ -598,6 +663,7 @@
         info.appendChild(nameDiv);
         info.appendChild(skuDiv);
         info.appendChild(codeDiv);
+        info.appendChild(qtyRow);
         info.appendChild(metaDiv);
 
         const actions = document.createElement("div");
@@ -649,6 +715,7 @@
       format,
       name: known ? known.name : "",
       sku: known ? known.sku : "",
+      qty: 1,
       time: now
     });
     saveHistory(history);
@@ -674,11 +741,14 @@
     const code = prompt("Barcode value (leave blank if unknown):", "") || "";
     const name = prompt("Product name:", "") || "";
     const sku = prompt("Product SKU:", "") || "";
+    const qtyRaw = prompt("Quantity:", "1") || "1";
     if (!code && !name && !sku) return;
     const now = Date.now();
     const trimmedCode = code.trim() || "(no barcode)";
     const trimmedName = name.trim();
     const trimmedSku = sku.trim();
+    const parsedQty = parseInt(qtyRaw, 10);
+    const qty = isNaN(parsedQty) || parsedQty < 0 ? 1 : parsedQty;
     const history = loadHistory();
     history.unshift({
       id: now + "-" + Math.random().toString(36).slice(2),
@@ -686,6 +756,7 @@
       format: "Manual",
       name: trimmedName,
       sku: trimmedSku,
+      qty: qty,
       time: now
     });
     saveHistory(history);
@@ -903,12 +974,13 @@
       setStatus("Nothing to export", "err");
       return;
     }
-    let csv = "product_name,sku,code,format,timestamp\n";
+    let csv = "product_name,sku,quantity,code,format,timestamp\n";
     history.forEach((e) => {
       const iso = new Date(e.time).toISOString();
       const name = e.name || "";
       const sku = e.sku || "";
-      csv += `"${name.replace(/"/g, '""')}","${sku.replace(/"/g, '""')}","${e.code.replace(/"/g, '""')}","${e.format}","${iso}"\n`;
+      const qty = e.qty != null ? e.qty : 1;
+      csv += `"${name.replace(/"/g, '""')}","${sku.replace(/"/g, '""')}","${qty}","${e.code.replace(/"/g, '""')}","${e.format}","${iso}"\n`;
     });
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
