@@ -276,6 +276,92 @@
     background: #2a2e38;
     color: var(--text);
   }
+  #catalogBtn {
+    flex: none;
+    background: #2a2e38;
+    color: var(--accent);
+  }
+  .hidden { display: none !important; }
+  section#catalog {
+    margin: 16px 16px 0;
+    background: var(--card);
+    border-radius: 14px;
+    padding: 14px;
+  }
+  #catalog-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    gap: 8px;
+  }
+  #catalog-head h2 {
+    font-size: 1rem;
+    margin: 0;
+    color: var(--text);
+  }
+  #catalog-actions { display: flex; gap: 8px; flex: none; }
+  #catalog-actions button {
+    flex: none;
+    padding: 7px 12px;
+    font-size: 0.78rem;
+    background: #2a2e38;
+    color: var(--text);
+  }
+  #catalog-actions #catalogAddBtn { color: var(--accent); }
+  #catalog-hint {
+    color: var(--muted);
+    font-size: 0.75rem;
+    margin: 0 0 10px;
+    line-height: 1.4;
+  }
+  ul#catalog-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  ul#catalog-list li {
+    background: #11141b;
+    border-radius: 10px;
+    padding: 10px 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+  }
+  ul#catalog-list li .cinfo { min-width: 0; flex: 1; }
+  ul#catalog-list li .cname {
+    font-weight: 700;
+    font-size: 0.92rem;
+    word-break: break-word;
+  }
+  ul#catalog-list li .csku {
+    color: var(--accent);
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin-top: 2px;
+  }
+  ul#catalog-list li .ccode {
+    color: var(--muted);
+    font-size: 0.72rem;
+    margin-top: 2px;
+    word-break: break-all;
+  }
+  ul#catalog-list li .item-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: none;
+  }
+  #catalog-empty {
+    color: var(--muted);
+    font-size: 0.85rem;
+    text-align: center;
+    padding: 16px 0;
+  }
 </style>
 </head>
 <body>
@@ -305,10 +391,24 @@
     <div class="fmt" id="lastFmt"></div>
   </div>
 
+  <section id="catalog" class="hidden">
+    <div id="catalog-head">
+      <h2>Saved Products</h2>
+      <div id="catalog-actions">
+        <button id="catalogAddBtn">+ Add Product</button>
+        <button id="catalogCloseBtn">Close</button>
+      </div>
+    </div>
+    <p id="catalog-hint">Products saved here auto-fill their name &amp; SKU the next time that barcode is scanned — no typing needed.</p>
+    <ul id="catalog-list"></ul>
+    <div id="catalog-empty">No saved products yet</div>
+  </section>
+
   <section id="history">
     <div id="history-head">
       <h2>Scan History</h2>
       <div id="history-actions">
+        <button id="catalogBtn">📇 Products</button>
         <button id="manualBtn">+ Add</button>
         <button id="exportBtn">Export CSV</button>
         <button id="clearBtn">Clear</button>
@@ -322,6 +422,7 @@
 <script>
 (function () {
   const STORAGE_KEY = "barcodeScanHistory";
+  const CATALOG_KEY = "barcodeProductCatalog";
   let html5Qr = null;
   let scanning = false;
   let lastCode = null;
@@ -341,6 +442,12 @@
   const camTools = document.getElementById("camTools");
   const zoomRange = document.getElementById("zoomRange");
   const torchBtn = document.getElementById("torchBtn");
+  const catalogBtn = document.getElementById("catalogBtn");
+  const catalogSection = document.getElementById("catalog");
+  const catalogList = document.getElementById("catalog-list");
+  const catalogEmpty = document.getElementById("catalog-empty");
+  const catalogAddBtn = document.getElementById("catalogAddBtn");
+  const catalogCloseBtn = document.getElementById("catalogCloseBtn");
 
   let editingId = null;
   let torchOn = false;
@@ -355,6 +462,31 @@
 
   function saveHistory(history) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
+  }
+
+  // ---- product catalog: barcode -> { name, sku } ----
+  // Once a product is saved here (by scanning + filling in details once, or
+  // via the Products panel), future scans of the same barcode auto-fill
+  // the name & SKU with no manual typing.
+  function loadCatalog() {
+    try {
+      return JSON.parse(localStorage.getItem(CATALOG_KEY) || "{}");
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function saveCatalog(catalog) {
+    localStorage.setItem(CATALOG_KEY, JSON.stringify(catalog));
+  }
+
+  function upsertCatalogEntry(code, name, sku) {
+    if (!code) return;
+    // don't pollute the catalog with entries that have nothing useful yet
+    if (!name && !sku) return;
+    const catalog = loadCatalog();
+    catalog[code] = { name: name || "", sku: sku || "" };
+    saveCatalog(catalog);
   }
 
   function updateEntry(id, changes) {
@@ -406,11 +538,12 @@
         saveBtn.className = "save-btn";
         saveBtn.textContent = "Save";
         saveBtn.addEventListener("click", () => {
-          updateEntry(entry.id, {
-            name: nameField.input.value.trim(),
-            sku: skuField.input.value.trim(),
-            code: codeField.input.value.trim() || entry.code
-          });
+          const finalCode = codeField.input.value.trim() || entry.code;
+          const finalName = nameField.input.value.trim();
+          const finalSku = skuField.input.value.trim();
+          updateEntry(entry.id, { name: finalName, sku: finalSku, code: finalCode });
+          // remember this product so future scans of the same barcode auto-fill
+          upsertCatalogEntry(finalCode, finalName, finalSku);
           editingId = null;
           renderHistory();
         });
@@ -506,18 +639,35 @@
     lastScanTime = now;
 
     const id = now + "-" + Math.random().toString(36).slice(2);
+    const catalog = loadCatalog();
+    const known = catalog[code];
+
     const history = loadHistory();
-    history.unshift({ id, code, format, name: "", sku: "", time: now });
+    history.unshift({
+      id,
+      code,
+      format,
+      name: known ? known.name : "",
+      sku: known ? known.sku : "",
+      time: now
+    });
     saveHistory(history);
-    editingId = id; // open edit mode immediately so name + SKU can be added/corrected
-    renderHistory();
 
     lastCodeEl.textContent = code;
     lastFmtEl.textContent = format;
     lastScanEl.classList.add("show");
-
     if (navigator.vibrate) navigator.vibrate(80);
-    setStatus("Scanned — add the product name and SKU below", "ok");
+
+    if (known && (known.name || known.sku)) {
+      // already seen this barcode before — auto-filled, no typing needed
+      editingId = null;
+      setStatus("Scanned — auto-filled from saved product: " + (known.name || known.sku), "ok");
+    } else {
+      // first time seeing this barcode — ask once, it'll auto-fill from now on
+      editingId = id;
+      setStatus("New barcode — enter name & SKU once, it'll auto-fill next time", "ok");
+    }
+    renderHistory();
   }
 
   function addManualEntry() {
@@ -526,17 +676,93 @@
     const sku = prompt("Product SKU:", "") || "";
     if (!code && !name && !sku) return;
     const now = Date.now();
+    const trimmedCode = code.trim() || "(no barcode)";
+    const trimmedName = name.trim();
+    const trimmedSku = sku.trim();
     const history = loadHistory();
     history.unshift({
       id: now + "-" + Math.random().toString(36).slice(2),
-      code: code.trim() || "(no barcode)",
+      code: trimmedCode,
       format: "Manual",
-      name: name.trim(),
-      sku: sku.trim(),
+      name: trimmedName,
+      sku: trimmedSku,
       time: now
     });
     saveHistory(history);
+    upsertCatalogEntry(trimmedCode, trimmedName, trimmedSku);
     renderHistory();
+  }
+
+  function renderCatalog() {
+    const catalog = loadCatalog();
+    const codes = Object.keys(catalog);
+    catalogList.innerHTML = "";
+    if (codes.length === 0) {
+      catalogEmpty.style.display = "block";
+      return;
+    }
+    catalogEmpty.style.display = "none";
+    codes.forEach((code) => {
+      const entry = catalog[code];
+      const li = document.createElement("li");
+
+      const info = document.createElement("div");
+      info.className = "cinfo";
+      const nameDiv = document.createElement("div");
+      nameDiv.className = "cname";
+      nameDiv.textContent = entry.name || "(no name)";
+      const skuDiv = document.createElement("div");
+      skuDiv.className = "csku";
+      skuDiv.textContent = entry.sku ? "SKU: " + entry.sku : "No SKU";
+      const codeDiv = document.createElement("div");
+      codeDiv.className = "ccode";
+      codeDiv.textContent = "Barcode: " + code;
+      info.appendChild(nameDiv);
+      info.appendChild(skuDiv);
+      info.appendChild(codeDiv);
+
+      const actions = document.createElement("div");
+      actions.className = "item-actions";
+
+      const editBtn = document.createElement("button");
+      editBtn.className = "edit";
+      editBtn.textContent = "✎";
+      editBtn.addEventListener("click", () => {
+        const newName = prompt("Product name:", entry.name || "");
+        if (newName === null) return;
+        const newSku = prompt("Product SKU:", entry.sku || "");
+        if (newSku === null) return;
+        upsertCatalogEntry(code, newName.trim(), newSku.trim());
+        renderCatalog();
+      });
+
+      const delBtn = document.createElement("button");
+      delBtn.className = "del";
+      delBtn.textContent = "✕";
+      delBtn.addEventListener("click", () => {
+        const c = loadCatalog();
+        delete c[code];
+        saveCatalog(c);
+        renderCatalog();
+      });
+
+      actions.appendChild(editBtn);
+      actions.appendChild(delBtn);
+
+      li.appendChild(info);
+      li.appendChild(actions);
+      catalogList.appendChild(li);
+    });
+  }
+
+  function addCatalogProduct() {
+    const code = prompt("Barcode value for this product:", "");
+    if (code === null || !code.trim()) return;
+    const name = prompt("Product name:", "") || "";
+    const sku = prompt("Product SKU:", "") || "";
+    if (!name && !sku) return;
+    upsertCatalogEntry(code.trim(), name.trim(), sku.trim());
+    renderCatalog();
   }
 
   function setStatus(msg, kind) {
@@ -705,6 +931,16 @@
       renderHistory();
     }
   });
+
+  catalogBtn.addEventListener("click", () => {
+    catalogSection.classList.remove("hidden");
+    renderCatalog();
+    catalogSection.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+  catalogCloseBtn.addEventListener("click", () => {
+    catalogSection.classList.add("hidden");
+  });
+  catalogAddBtn.addEventListener("click", addCatalogProduct);
 
   if (!("mediaDevices" in navigator) || !navigator.mediaDevices.getUserMedia) {
     setStatus("Camera not supported in this browser. Use Chrome on Android over HTTPS.", "err");
